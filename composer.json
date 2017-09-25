@@ -1,0 +1,17 @@
+{
+    "name": "nico/hydrator",
+    "type": "library",
+    "authors": [
+        {
+            "name": "nico",
+            "email": "me@nico.news"
+        }
+    ],
+    "autoload": {
+        "psr-4": {"Clea\\Hydrator\\": "src/"}
+    },
+    "require": {},
+    "require-dev": {
+        "phpunit/phpunit": "^6.3"
+    }
+}
