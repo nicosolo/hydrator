@@ -1,6 +1,10 @@
 {
     "name": "clea/hydrator",
     "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "hydrator"
+    ],
     "authors": [
         {
             "name": "nico",
