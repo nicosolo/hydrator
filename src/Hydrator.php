@@ -23,15 +23,43 @@ class Hydrator
      */
     private $transformer;
 
-    private $collectionName = "array";
+    /**
+     * @var array
+     */
+    private $settings;
+
+    /**
+     * @var array
+     */
+    private $hydratedProperties;
+
+    /**
+     * @var bool
+     */
+    private $cache;
 
 
-    public function __construct(?string $collectionName = "array", ?TransformerInterface $transformer = null)
+    /**
+     * Hydrator constructor.
+     * @param array|null $settings
+     *
+     * @param TransformerInterface|null $transformer
+     */
+    public function __construct(array $settings = [], ?TransformerInterface $transformer = null)
     {
 
-        $this->collectionName = $collectionName;
+        $defaultSettings = [
+            "additional_type" => [],
+            "cache" => true
+        ];
+
+
+        $this->settings = array_merge($defaultSettings, $settings);
+
+        $this->setCache((bool)$this->settings["cache"]);
+
         if ($transformer == null) {
-            $this->transformer = new Transformer();
+            $this->transformer = new Transformer($this->settings["additional_type"]);
         } else {
             $this->transformer = $transformer;
         }
@@ -39,38 +67,62 @@ class Hydrator
     }
 
     /**
-     * @param string $target
+     * Returns an entry of the container by its name.
+     *
+     * @param string $target Entry name or a class name.
      * @param array $data
-     * @return object|string
+     * @return mixed
      */
     public function hydrate(string $target, array $data)
     {
+
         $reflection = $this->getReflectionClass($target);
         $object = is_object($target) ? $target : $reflection->newInstanceWithoutConstructor();
-        foreach ($data as $name => $value) {
-            $this->hydrateField($name, $reflection, $value, $object);
+
+        if ($this->hasCache()) {
+
+            foreach ($data as $name => $value) {
+                if (!$property = $this->getHydratedProperty($reflection->getName(), $name)) {
+
+                    $property = $this->getPropertyHydrator($name, $reflection);
+                    $this->addHydratedProperty($property);
+
+                }
+
+                $this->hydrateProperty($property, $value, $object);
+            }
+
+        } else {
+            foreach ($data as $name => $value) {
+                $this->hydrateProperty($this->getPropertyHydrator($name, $reflection), $value, $object);
+            }
         }
+
         return $object;
     }
 
     /**
      * @param string $fieldName
      * @param \ReflectionClass $reflection
-     * @param $value
-     * @param $object
-     * @param null $parent
+     * @return FieldHydrator
      */
-    private function hydrateField(string $fieldName, \ReflectionClass $reflection, $value, $object, $parent = null): void
+    private function getPropertyHydrator(string $fieldName, \ReflectionClass $reflection): FieldHydrator
     {
+
+
+        $className = $reflection->getName();
         $propertyComment = null;
-        if ($reflection->hasProperty($fieldName)) {
-            $propertyComment = $reflection->getProperty($fieldName)->getDocComment();
-            if (strpos($propertyComment, "@noHydrate")) {
-                return;
+        $propertyName = $this->getPropertyName($fieldName);
+
+        if ($reflection->hasProperty($propertyName)) {
+            $propertyComment = $reflection->getProperty($propertyName)->getDocComment();
+            if (strpos($propertyComment, "@noHydrated")) {
+                return new FieldHydrator($className, $fieldName, FieldHydrator::TYPE_NOTHING);
             }
         } else {
-            return;
+            return new FieldHydrator($className, $fieldName, FieldHydrator::TYPE_NOTHING);
         }
+
 
         $setter = $this->getSetter($fieldName);
         $getter = $this->getGetter($fieldName);
@@ -86,33 +138,105 @@ class Hydrator
 
                 if ($type = $methodGetter->getReturnType()) {
                     if ($this->transformer->hasType($type->getName())) {
-                        $methodSetter->invoke($object, $this->transformer->transform($type->getName(), $value));
-                        return;
+                        return new FieldHydrator(
+                            $className,
+                            $fieldName,
+                            FieldHydrator::TYPE_TRANSFORM,
+                            $methodSetter,
+                            $type->getName()
+                        );
                     }
 
-                    if ($type->getName() == $this->collectionName) {
+                    if (
+                        $type->getName() == "array" or
+                        $this->getReflectionClass($type->getName())->implementsInterface(\ArrayAccess::class)
+                    ) {
 
-                        $type = $this->getTypeOfCollection($propertyComment);
-                        if ($type) {
-                            $self = $this;
-                            $data = array_map(function ($item) use ($self, $type) {
-                                return $self->hydrate($type, $item);
-                            }, $value);
-                            $methodSetter->invoke($object, $data);
-                            return;
+                        $objectType = $this->getTypeOfCollectionObject($propertyComment);
+                        if ($objectType) {
+                            return new FieldHydrator(
+                                $className,
+                                $fieldName,
+                                FieldHydrator::TYPE_COLLECTION,
+                                $methodSetter,
+                                $objectType,
+                                $type->getName()
+                            );
+                        } else {
+                            return new FieldHydrator(
+                                $className,
+                                $fieldName,
+                                FieldHydrator::TYPE_SET,
+                                $methodSetter
+                            );
                         }
                     } elseif ($type->getName()) {
-                        $methodSetter->invoke($object, $this->hydrate($type->getName(), $value));
-                        return;
+                        return new FieldHydrator(
+                            $className,
+                            $fieldName,
+                            FieldHydrator::TYPE_HYDRATE,
+                            $methodSetter,
+                            $type->getName()
+                        );
+
                     }
                 }
 
             }
 
-            $methodSetter->invoke($object, $value);
+            return new FieldHydrator($className, $fieldName, FieldHydrator::TYPE_SET, $methodSetter);
+        }
+
+        return new FieldHydrator($className, $fieldName, FieldHydrator::TYPE_NOTHING);
+
+    }
+
+    /**
+     * @param FieldHydrator $propertyHydrator
+     * @param $value
+     * @param $object
+     * @return mixed
+     */
+    private function hydrateProperty(FieldHydrator $propertyHydrator, $value, $object)
+    {
+
+        if ($propertyHydrator->getType() == FieldHydrator::TYPE_NOTHING) {
             return;
         }
 
+        if ($propertyHydrator->getType() == FieldHydrator::TYPE_TRANSFORM) {
+            return $propertyHydrator->getSetter()->invoke($object, $this->transformer->transform($propertyHydrator->getObjectType(), $value));
+        }
+
+        if ($propertyHydrator->getType() == FieldHydrator::TYPE_HYDRATE) {
+            if (is_iterable($value)) {
+                return $propertyHydrator->getSetter()->invoke($object, $this->hydrate($propertyHydrator->getObjectType(), $value));
+            }
+
+        }
+
+        if ($propertyHydrator->getType() == FieldHydrator::TYPE_COLLECTION) {
+
+            if (is_iterable($value)) {
+                $collectionType = $propertyHydrator->getCollectionType();
+                if ($collectionType == "array") {
+                    $values = [];
+                } else {
+                    $values = new $collectionType();
+                }
+
+                foreach ($value as $key => $item) {
+                    $values[$key] = $this->hydrate($propertyHydrator->getObjectType(), $item);
+                }
+            }
+
+            return $propertyHydrator->getSetter()->invoke($object, $values);
+
+        }
+
+        if ($propertyHydrator->getType() == FieldHydrator::TYPE_SET) {
+            return $propertyHydrator->getSetter()->invoke($object, $value);
+        }
 
     }
 
@@ -126,12 +250,14 @@ class Hydrator
     {
         $className = is_object($target) ? get_class($target) : $target;
         if (!isset($this->reflectionClassMap[$className])) {
+
             $this->reflectionClassMap[$className] = new \ReflectionClass($className);
+
         }
         return $this->reflectionClassMap[$className];
     }
 
-    public function getTypeOfCollection(string $comment): ?string
+    private function getTypeOfCollectionObject(string $comment): ?string
     {
         if (preg_match("#@var (.*)\[\]#", $comment, $matches)) {
             return $matches[1] ?? null;
@@ -145,7 +271,7 @@ class Hydrator
      */
     private function getSetter(string $fieldName): string
     {
-        return "set" . $this->getProperty($fieldName);
+        return "set" . $this->toCamelCase($fieldName);
     }
 
     /**
@@ -154,15 +280,79 @@ class Hydrator
      */
     private function getGetter(string $fieldName): string
     {
-        return "get" . $this->getProperty($fieldName);
+        return "get" . $this->toCamelCase($fieldName);
     }
 
     /**
      * @param string $fieldName
      * @return string
      */
-    private function getProperty(string $fieldName): string
+    private function toCamelCase(string $fieldName): string
     {
         return join("", array_map("ucfirst", explode("_", $fieldName)));
     }
+
+    /**
+     * @param string $property
+     * @return string
+     */
+    public function getPropertyName(string $property)
+    {
+        return lcfirst($this->toCamelCase($property));
+    }
+
+    /**
+     * @return array
+     */
+    public function getSettings(): array
+    {
+        return $this->settings;
+    }
+
+    /**
+     * @param array $settings
+     */
+    public function setSettings(array $settings)
+    {
+        $this->settings = $settings;
+    }
+
+    /**
+     * @return bool
+     */
+    public function hasCache(): bool
+    {
+        return $this->cache;
+    }
+
+    /**
+     * @param bool $cache
+     */
+    public function setCache(bool $cache)
+    {
+        $this->cache = $cache;
+    }
+
+    /**
+     * @param FieldHydrator|null $propertyHydrator
+     */
+    private function addHydratedProperty(?FieldHydrator $propertyHydrator = null)
+    {
+
+        $this->hydratedProperties[$propertyHydrator->getClassName()][$propertyHydrator->getKey()] = $propertyHydrator;
+
+
+    }
+
+    /**
+     * @param string $className
+     * @param string $fieldName
+     * @return FieldHydrator|null
+     */
+    private function getHydratedProperty(string $className, string $fieldName): ?FieldHydrator
+    {
+        return $this->hydratedProperties[$className][$fieldName] ?? null;
+    }
+
+
 }

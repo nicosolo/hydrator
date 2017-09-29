@@ -11,7 +11,22 @@ namespace Clea\Hydrator;
 
 interface TransformerInterface
 {
-    public function transform(string $type, $value);
 
+    /**
+     * TransformerInterface constructor.
+     * @param array $additionalType
+     */
+    public function __construct(array $additionalType = []);
+    /**
+     * @param callable|string $type
+     * @param $value
+     * @return mixed
+     */
+    public function transform($type, $value);
+
+    /**
+     * @param string $type
+     * @return bool
+     */
     public function hasType(string $type): bool;
 }

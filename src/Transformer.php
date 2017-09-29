@@ -18,6 +18,14 @@ class Transformer implements TransformerInterface
         \DateTime::class => "toDateTime"
     ];
 
+    /**
+     * Transformer constructor.
+     * @param array $additionalType
+     */
+    public function __construct(array $additionalType = [])
+    {
+        $this->types = array_merge($this->types, $additionalType);
+    }
 
     /**
      * @param $value
@@ -56,12 +64,30 @@ class Transformer implements TransformerInterface
     }
 
     /**
-     * @param string $type
+     * @param string|callable $type
      * @param $value
      * @return mixed
      */
-    public function transform(string $type, $value)
+    public function transform($type, $value)
     {
-        return $this->{$this->types[$type]}($value);
+        $typeTarget = $this->getType($type);
+        if(is_string($typeTarget)){
+            return $this->{$typeTarget}($value);
+        }
+
+        if(is_callable($typeTarget)){
+            return $typeTarget($value);
+        }
+
+        return $value;
+
+    }
+
+    /**
+     * @param string $typeKey
+     * @return string|callable|null
+     */
+    public function getType(string $typeKey){
+        return $this->types[$typeKey] ?? null;
     }
 }

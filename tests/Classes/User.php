@@ -18,13 +18,13 @@ class User
     private $name;
 
     /**
-     * @noHydrate
+     * @noHydrated
      * @var string
      */
     private $email;
 
     /**
-     * @var string
+     * @var int
      */
     private $id;
 
@@ -34,9 +34,23 @@ class User
     private $comments;
 
     /**
+     * @var \Test\Classes\Comment[]
+     */
+    private $customComments;
+
+    /**
      * @var Address
      */
     private $address;
+
+    /**
+     * @var \Test\Classes\Number
+     */
+    private $number;
+    /**
+     * @var float
+     */
+    private $float;
 
     /**
      * @return string
@@ -57,7 +71,7 @@ class User
     /**
      * @return string
      */
-    public function getEmail(): string
+    public function getEmail(): ?string
     {
         return $this->email;
     }
@@ -71,23 +85,23 @@ class User
     }
 
     /**
-     * @return string
+     * @return int
      */
-    public function getId(): string
+    public function getId(): ?int
     {
         return $this->id;
     }
 
     /**
-     * @param string $id
+     * @param int $id
      */
-    public function setId(string $id)
+    public function setId(int $id)
     {
         $this->id = $id;
     }
 
     /**
-     * @return array
+     * @return Comment[]
      */
     public function getComments(): array
     {
@@ -100,6 +114,22 @@ class User
     public function setComments(array $comments)
     {
         $this->comments = $comments;
+    }
+
+    /**
+     * @return CustomCollection
+     */
+    public function getCustomComments(): CustomCollection
+    {
+        return $this->customComments;
+    }
+
+    /**
+     * @param CustomCollection $customComments
+     */
+    public function setCustomComments(CustomCollection $customComments)
+    {
+        $this->customComments = $customComments;
     }
 
 
@@ -118,6 +148,39 @@ class User
     {
         $this->address = $address;
     }
+
+    /**
+     * @return Number|null
+     */
+    public function getNumber(): ?Number
+    {
+        return $this->number;
+    }
+
+    /**
+     * @param Number $number
+     */
+    public function setNumber(Number $number)
+    {
+        $this->number = $number;
+    }
+
+    /**
+     * @return float
+     */
+    public function getFloat(): ?float
+    {
+        return $this->float;
+    }
+
+    /**
+     * @param float $float
+     */
+    public function setFloat(float $float)
+    {
+        $this->float = $float;
+    }
+
 
 
 }
