@@ -48,7 +48,6 @@ class HydratorTest extends \PHPUnit\Framework\TestCase
          */
         $user = $hydrator->hydrate(\Test\Classes\User::class, $data);
 
-        var_dump($user);
         $this->assertEquals($this->getUserData()["id"], $user->getId());
         $this->assertNull($user->getNumber());
         $this->assertNull($user->getEmail());
@@ -80,6 +79,19 @@ class HydratorTest extends \PHPUnit\Framework\TestCase
         $this->assertEquals(new \Test\Classes\Number("1"), $user->getNumber());
 
         $this->assertEquals((float)10.42, $user->getFloat());
+    }
+
+    public function testExistingObject()
+    {
+        $hydrator = new Clea\Hydrator\Hydrator();
+
+        $user = new \Test\Classes\User();
+        $user->setName("test");
+        $user->setEmail("test@test.com");
+        $hydrator->hydrate($user, $this->getUserData());
+
+        $this->assertEquals($this->getUserData()["name"], $user->getName());
+        $this->assertEquals("test@test.com", $user->getEmail());
     }
 
 

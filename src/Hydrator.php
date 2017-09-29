@@ -69,11 +69,11 @@ class Hydrator
     /**
      * Returns an entry of the container by its name.
      *
-     * @param string $target Entry name or a class name.
+     * @param mixed $target Entry name or a class name.
      * @param array $data
      * @return mixed
      */
-    public function hydrate(string $target, array $data)
+    public function hydrate($target, array $data)
     {
 
         $reflection = $this->getReflectionClass($target);
